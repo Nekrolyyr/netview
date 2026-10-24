@@ -32,7 +32,7 @@ export function placeLabels(candidates: LabelCandidate[], viewWidth: number, vie
     const top = c.y - c.height - padding;
     const right = c.x + c.width / 2 + padding;
     const bottom = c.y + padding;
-    if (right < 0 || bottom < 0 || left > viewWidth || top > viewHeight) continue;
+    if (left < 0 || top < 0 || right > viewWidth || bottom > viewHeight) continue;   // only labels that fit entirely
     const x0 = Math.max(0, Math.floor(left / cell));
     const x1 = Math.max(0, Math.floor(right / cell));
     const y0 = Math.max(0, Math.floor(top / cell));

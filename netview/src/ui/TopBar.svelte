@@ -27,6 +27,8 @@
     selectNode(node);
     cameraRequest.set({ kind: 'node', node });
     query = '';
+    // hand the keyboard back to the shortcuts (Esc, 1/2/3, Space …)
+    (document.activeElement as HTMLElement | null)?.blur();
   }
 
   function onSearchKey(e: KeyboardEvent) {

@@ -506,3 +506,24 @@ be developed independently of each other.
    (Jaccard against the previous bundle) keeps colours stable. It belongs to `--reuse-layout`.
 6. **Privacy:** bundles go into the git-ignored `data/export/viewer/`. The viewer has no network
    calls, no analytics and no CDN at run time; everything is bundled by Vite.
+
+---
+
+## 7. Implementation status (2026-10-24)
+
+Every module of this plan is implemented: Part A in the analyzer (branch `viewer-export`,
+`src/har_analyzer/viewer_export/`, 19 tests) and Part B in `netview/` (23 unit tests, Playwright
+smoke tests). On the current dataset the export takes about 15 s and writes a 19.6 MB bundle with
+11,685 nodes, 44,418 links, 31 communities and 1,676 media. The viewer runs at ~57 fps.
+
+Changes made during implementation:
+
+| Plan | Implemented | Why |
+|---|---|---|
+| Likes and comments link to the owner *and co-authors* | Owner only; co-authors keep their own `coauthor` link to the owner | Many GSF posts are collaborations between delegations. With co-authors, one like became several links and 36k instead of 12k nodes stayed visible. |
+| Communities from `analyze communities` | Run #2 (threshold 0.4: 47 communities, modularity 0.80), plus an extra **"Source accounts"** community for whitelist accounts that are not in any community | Most GSF accounts, including `globalsumudflotilla`, are not in any community. Without them nearly every comment would point at "no community". |
+| Barnes–Hut ForceAtlas2 | Exact repulsion, numba-parallel (numpy fallback) | Fast enough for ~12k nodes (a few seconds) and simpler. |
+| One repulsion constant | Local constant inside communities, a weaker global one calibrated to the community extent, and a pre-scale before overlap removal | With a single constant the unclustered nodes ended up on a shell around the dense communities. |
+| Clouds drawn additively | Accumulated offscreen and composited as average colour by coverage | 31 overlapping clouds added up to white. |
+| Separate `reach.worker` | Reach union runs in the bundle worker, which already holds the reach BLOBs | Saves copying the blobs between workers. |
+| Optional `stance_parent` prompt | Added and disabled by default (`[comments.prompts.stance_parent] enabled = false`). When enabled, the export uses it for replies. | |

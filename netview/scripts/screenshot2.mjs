@@ -1,0 +1,43 @@
+// Interaction screenshots (development aid): node selection, media reach, community panel.
+import { chromium } from '@playwright/test';
+
+const [bundle, outDir, url = 'http://localhost:4173'] = process.argv.slice(2);
+const browser = await chromium.launch({ channel: 'chrome' });
+const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
+const errors = [];
+page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+page.on('pageerror', (e) => errors.push(String(e)));
+await page.goto(url);
+await page.getByTestId('bundle-input').setInputFiles(bundle);
+await page.getByTestId('viewport').waitFor();
+await page.waitForTimeout(1500);
+const fps = await page.evaluate(() => new Promise((resolve) => {
+  let n = 0; const t0 = performance.now();
+  const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else resolve(n / 2); };
+  requestAnimationFrame(f);
+}));
+console.log('fps', fps);
+await page.locator('#node-search').fill('globalsumudflot');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(1500);
+await page.screenshot({ path: `${outDir}/6-node.png` });
+await page.keyboard.press('Escape');
+await page.locator('select[aria-label=Sort]').selectOption('reach');
+await page.getByTestId('media-list').locator('[role=option]').first().click();
+await page.waitForTimeout(800);
+await page.keyboard.press('r');
+await page.waitForTimeout(1200);
+await page.screenshot({ path: `${outDir}/7-reach.png` });
+const seeker = page.getByTestId('seeker');
+const box = await seeker.boundingBox();
+await page.mouse.click(box.x + box.width * 0.62, box.y + box.height / 2);
+await page.waitForTimeout(800);
+await page.screenshot({ path: `${outDir}/8-reach-time.png` });
+await page.keyboard.press('2');
+await page.waitForTimeout(800);
+await page.getByText('Communities', { exact: false }).first().waitFor();
+await page.setViewportSize({ width: 390, height: 844 });
+await page.waitForTimeout(800);
+await page.screenshot({ path: `${outDir}/9-phone.png` });
+console.log(errors.length ? errors.join('\n') : 'no console errors');
+await browser.close();
