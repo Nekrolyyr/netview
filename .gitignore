@@ -1,0 +1,7 @@
+.idea/
+node_modules/
+dist/
+*.netview
+!netview/tests/fixtures/*.netview
+test-results/
+playwright-report/
