@@ -1,0 +1,147 @@
+:root {
+  --bg: #14101c;
+  --bg-deep: #0d0a13;
+  --panel: #1a1524;
+  --panel-2: #221b2f;
+  --panel-3: #2b2239;
+  --line: #342a45;
+  --text: #ece8f3;
+  --muted: #9a90ab;
+  --faint: #6d6480;
+  --accent: #b9a3ff;
+  --whitelist: #ff2a2a;
+  --influencer: #ff5fc8;
+  --other: #f2f0f5;
+  --positive: #3ddc84;
+  --negative: #ff4d4d;
+  --radius: 8px;
+  --font: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-deep);
+  color: var(--text);
+  font: 13px/1.45 var(--font);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.btn {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  color: var(--text);
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.btn:hover {
+  background: var(--panel-3);
+  border-color: #47395e;
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn.ghost:hover {
+  background: var(--panel-2);
+}
+
+.btn.small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.input {
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 9px;
+  width: 100%;
+}
+
+.input::placeholder {
+  color: var(--faint);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.faint {
+  color: var(--faint);
+}
+
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+
+.scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #3a3050 transparent;
+}
+
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.viewport-canvas,
+.viewport-labels {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.viewport-labels {
+  pointer-events: none;
+}
