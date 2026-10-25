@@ -25,8 +25,9 @@ Instagram profile and post links that you click, the app makes no network reques
 ### Default bundle
 
 On start the app requests `data/default.netview` and opens it if the server has one; otherwise it
-shows the file picker. Locally, point `NETVIEW_DATASET` at a bundle before `npm run dev` or
-`npm run preview`:
+shows the file picker. The downloaded media that the export put next to the bundle (`media/`) are
+served as `data/media/`; they are only shown for this server bundle, not for a file opened from disk.
+Locally, point `NETVIEW_DATASET` at a bundle before `npm run dev` or `npm run preview`:
 
 ```powershell
 $env:NETVIEW_DATASET = "..\..\Instagram_HAR_analyzer\data\export\viewer\network.netview"; npm run dev
@@ -44,7 +45,9 @@ docker compose up -d --build
 ```
 
 `NETVIEW_DATA_DIR` (default `./data`) is mounted read-only at `/data`, and
-`$NETVIEW_DATA_DIR/$NETVIEW_DATASET_FILE` is served as the default bundle. If you replace the file,
+`$NETVIEW_DATA_DIR/$NETVIEW_DATASET_FILE` is served as the default bundle, and
+`$NETVIEW_DATA_DIR/media/` as its media. Point `NETVIEW_DATA_DIR` at har-analyzer's
+`data/export/viewer`. If you replace the file,
 the next page load picks it up without a restart. Note that anyone who can reach the URL can download
 the bundle. To require a login, enable the basic-auth labels in `docker-compose.yml`.
 
@@ -57,7 +60,7 @@ the bundle. To require a login, enable the basic-auth labels in `docker-compose.
 | **View modes** | `1` Network (nodes, links, faint clouds) · `2` Community (clouds and sentiment arrows, plus unclustered accounts with > 10k followers) · `3` Influencer (influencers and source accounts on the clouds) |
 | **Search** | `/`, type a username, `Enter` flies to it |
 | **Time seeker** | drag or click the histogram, `←/→` one day (`Shift`: a week), `Home/End`, `Space` plays. Gray = not active yet. Users without any time turn coloured at the end. |
-| **Media** | click a post to filter by its reach (interacted = direct, their neighbours = one hop); `Ctrl`-click adds, `Shift`-click selects a range. Groups: build them from the selection, drag posts onto a group, double click renames, export and import as JSON. The time seeker then shows when the reach grew. |
+| **Media** | click the thumbnail of a downloaded post (▶ / ⤢) to view it: images, videos with sound, carousels (`←/→`), caption and counts; `Esc` closes. Click a post to filter by its reach (interacted = direct, their neighbours = one hop); `Ctrl`-click adds, `Shift`-click selects a range. Groups: build them from the selection, drag posts onto a group, double click renames, export and import as JSON. The time seeker then shows when the reach grew. |
 | **Settings** (⚙) | node size, cloud and link intensity, number of labels, link types, auto-rotate |
 
 Colours: source (whitelist) accounts are bright red, influencers pink and everyone else white. Node

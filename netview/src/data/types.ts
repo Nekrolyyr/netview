@@ -122,6 +122,16 @@ export interface MediaInfo {
   hopCount: number;
   absorbedReached: number;
   hasThumbnail: boolean;
+  /** Downloaded files served from data/media/ (carousel items in order); empty when none were exported. */
+  files: MediaFile[];
+}
+
+export interface MediaFile {
+  position: number;
+  kind: 'image' | 'video';
+  file: string;
+  /** separate audio track of a video (exported without ffmpeg) */
+  audio: string | null;
 }
 
 export interface TimelineDay {

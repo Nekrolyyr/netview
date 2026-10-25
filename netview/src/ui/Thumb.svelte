@@ -1,12 +1,18 @@
 <script lang="ts">
   import { client } from '../state/store';
+  import { mediaUrl } from './mediaFiles';
 
-  let { pk, has, kind }: { pk: string; has: boolean; kind: string | null } = $props();
+  /** ``image``: a downloaded image file, used when the bundle has no thumbnail. */
+  let { pk, has, kind, image = null }: { pk: string; has: boolean; kind: string | null; image?: string | null } =
+    $props();
   let url = $state<string | null>(null);
 
   $effect(() => {
     url = null;
-    if (!has) return;
+    if (!has) {
+      if (image) url = mediaUrl(image);
+      return;
+    }
     let alive = true;
     client.thumbnail(pk).then((u) => {
       if (alive) url = u;
@@ -19,7 +25,7 @@
 
 <div class="thumb">
   {#if url}
-    <img src={url} alt="" loading="lazy" />
+    <img src={url} alt="" loading="lazy" onerror={() => (url = null)} />
   {:else}
     <span class="kind">{kind === 'reel' ? '▶' : kind === 'carousel' ? '❐' : '◻'}</span>
   {/if}

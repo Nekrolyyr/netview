@@ -14,7 +14,8 @@ import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 
 import { decodeArray, decodeMeta, mergeReach, parseJsonList, type DType } from './decode';
 import {
-  ARRAY_NAMES, SCHEMA_VERSION, type Arrays, type BundleData, type CommunityInfo, type MediaInfo, type ReachResult,
+  ARRAY_NAMES, SCHEMA_VERSION, type Arrays, type BundleData, type CommunityInfo, type MediaFile, type MediaInfo,
+  type ReachResult,
 } from './types';
 
 let db: Database | null = null;
@@ -97,6 +98,17 @@ async function open(buffer: ArrayBuffer): Promise<{ data: BundleData; transfer: 
   const overlap = rows('SELECT a, b, overlap FROM community_overlap').map((r) => ({
     a: Number(r.a), b: Number(r.b), overlap: Number(r.overlap),
   }));
+  const files = new Map<string, MediaFile[]>();
+  if (hasTable('media_files')) {
+    for (const r of rows('SELECT media_pk, position, kind, file, audio FROM media_files ORDER BY media_pk, position')) {
+      const pk = String(r.media_pk);
+      if (!files.has(pk)) files.set(pk, []);
+      files.get(pk)!.push({
+        position: Number(r.position), kind: r.kind === 'video' ? 'video' : 'image', file: String(r.file),
+        audio: (r.audio as string | null) ?? null,
+      });
+    }
+  }
   const media: MediaInfo[] = rows(`
     SELECT m.media_pk, m.code, m.owner_idx, m.owner_username, m.kind, m.taken_at, m.caption, m.like_count,
            m.comment_count, m.mean_sentiment, m.n_rated, m.thumbnail IS NOT NULL AS has_thumb,
@@ -118,6 +130,7 @@ async function open(buffer: ArrayBuffer): Promise<{ data: BundleData; transfer: 
     hopCount: Number(r.hop_count ?? 0),
     absorbedReached: Number(r.absorbed_reached ?? 0),
     hasThumbnail: Boolean(r.has_thumb),
+    files: files.get(String(r.media_pk)) ?? [],
   }));
   const timeline = rows('SELECT day, exact, derived FROM timeline ORDER BY day').map((r) => ({
     day: String(r.day), exact: Number(r.exact), derived: Number(r.derived),

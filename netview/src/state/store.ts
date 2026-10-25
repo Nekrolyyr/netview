@@ -33,6 +33,8 @@ export const selectedMedia = writable<Set<string>>(new Set());
 export const reach = writable<ReachResult | null>(null);
 export const groups = writable<MediaGroup[]>([]);
 
+/** Medium shown in the media viewer */
+export const viewedMedia = writable<string | null>(null);
 export const selectedNode = writable<number | null>(null);
 export const selectedCommunity = writable<number | null>(null);
 export const hovered = writable<HoverInfo | null>(null);
@@ -79,7 +81,7 @@ groups.subscribe((g) => {
 
 // ---------------------------------------------------------------- actions
 export function openFile(file: File): Promise<void> {
-  return openBundle(file.name, `Reading ${file.name} …`, () => file.arrayBuffer());
+  return openBundle(file.name, `Reading ${file.name} …`, () => file.arrayBuffer(), false);
 }
 
 /** Served next to the app (nginx in Docker, the Vite middleware in dev); 204 when none is configured. */
@@ -94,10 +96,13 @@ export async function openDefaultDataset(): Promise<void> {
     return;
   }
   if (response.status !== 200) return;
-  await openBundle('default.netview', 'Downloading the default bundle …', () => response.arrayBuffer());
+  await openBundle('default.netview', 'Downloading the default bundle …', () => response.arrayBuffer(), true);
 }
 
-async function openBundle(name: string, message: string, read: () => Promise<ArrayBuffer>): Promise<void> {
+/** ``served``: the server's own bundle, whose media files it serves under data/media/. A file opened from
+ * disk may come from anywhere, so its media files are not looked up. */
+async function openBundle(name: string, message: string, read: () => Promise<ArrayBuffer>,
+                          served: boolean): Promise<void> {
   loading.set(message);
   loadError.set(null);
   try {
@@ -105,7 +110,9 @@ async function openBundle(name: string, message: string, read: () => Promise<Arr
     if (!buffer.byteLength) throw new Error(`${name} is empty`);
     loading.set('Opening the bundle …');
     const data = await client.open(buffer);
+    if (!served) for (const m of data.media) m.files = [];
     selectedMedia.set(new Set());
+    viewedMedia.set(null);
     reach.set(null);
     selectedNode.set(null);
     selectedCommunity.set(null);

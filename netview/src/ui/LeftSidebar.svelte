@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { MediaInfo } from '../data/types';
   import {
-    bundle, groups, selectedMedia, setMediaSelection, toggleMedia, type MediaGroup,
+    bundle, groups, selectedMedia, setMediaSelection, toggleMedia, viewedMedia, type MediaGroup,
   } from '../state/store';
   import { compact, formatDate, sentimentColour, signed } from './format';
   import {
@@ -228,7 +228,16 @@
         >
           <input type="checkbox" checked={$selectedMedia.has(m.pk)} aria-label="Select"
             onclick={(e) => { e.stopPropagation(); toggleMedia(m.pk); anchor = m.pk; }} />
-          <Thumb pk={m.pk} has={m.hasThumbnail} kind={m.kind} />
+          {#if m.files.length}
+            <button class="open" title="View the post{m.files.length > 1 ? ` (${m.files.length} items)` : ''}"
+              onclick={(e) => { e.stopPropagation(); viewedMedia.set(m.pk); }}>
+              <Thumb pk={m.pk} has={m.hasThumbnail} kind={m.kind}
+                image={m.files.find((f) => f.kind === 'image')?.file ?? null} />
+              <span class="play" aria-hidden="true">{m.files.some((f) => f.kind === 'video') ? '▶' : '⤢'}</span>
+            </button>
+          {:else}
+            <Thumb pk={m.pk} has={m.hasThumbnail} kind={m.kind} />
+          {/if}
           <div class="info">
             <div class="line1"><span class="owner">@{m.owner ?? '?'}</span><span class="faint num">{formatDate(m.takenAt)}</span></div>
             <div class="line2 faint num">
@@ -380,6 +389,31 @@
   .info {
     min-width: 0;
     flex: 1;
+  }
+
+  .open {
+    position: relative;
+    padding: 0;
+    border: 0;
+    background: none;
+    border-radius: 6px;
+    cursor: zoom-in;
+  }
+
+  .open:focus-visible {
+    outline: 2px solid var(--accent);
+  }
+
+  .play {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    padding: 0 3px;
+    border-radius: 4px;
+    background: rgb(13 10 19 / 0.75);
+    color: var(--text);
+    font-size: 10px;
+    line-height: 14px;
   }
 
   .line1 {

@@ -2,6 +2,7 @@
   import { bundle, loadError, loading, openDefaultDataset, openFile, playing, selectCommunity, selectNode, viewMode, cameraRequest } from './state/store';
   import DropZone from './ui/DropZone.svelte';
   import LeftSidebar from './ui/LeftSidebar.svelte';
+  import MediaViewer from './ui/MediaViewer.svelte';
   import RightSidebar from './ui/RightSidebar.svelte';
   import TimeSeeker from './ui/TimeSeeker.svelte';
   import TopBar from './ui/TopBar.svelte';
@@ -62,6 +63,7 @@
     <main class="view"><Viewport /></main>
     <aside class="right" class:open={rightOpen}><RightSidebar /></aside>
     <footer class="seek"><TimeSeeker /></footer>
+    <MediaViewer />
   {:else}
     <DropZone />
   {/if}

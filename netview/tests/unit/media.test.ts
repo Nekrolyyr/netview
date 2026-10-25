@@ -6,7 +6,7 @@ import { filterMedia, groupsByOwner, groupsByWeek, rangeBetween, weekOf } from '
 const m = (pk: string, owner: string, day: string, extra: Partial<MediaInfo> = {}): MediaInfo => ({
   pk, code: pk.toUpperCase(), ownerIdx: 0, owner, kind: 'post', takenAt: Date.parse(`${day}T12:00:00Z`) / 1000,
   caption: `caption ${pk}`, likes: 1, comments: 1, meanSentiment: null, nRated: null, directCount: 0, hopCount: 0,
-  absorbedReached: 0, hasThumbnail: false, ...extra,
+  absorbedReached: 0, hasThumbnail: false, files: [], ...extra,
 });
 
 const media = [

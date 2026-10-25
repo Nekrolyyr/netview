@@ -6,12 +6,17 @@ Run with the Python of the har-analyzer checkout (it imports har_analyzer):
 
 Three groups of users follow their own hubs (-> communities), two whitelist accounts post media that
 the groups like and comment on with timestamps, three influencers sit in between, and every comment
-gets a synthetic sentiment rating (group A supportive, group C hostile).
+gets a synthetic sentiment rating (group A supportive, group C hostile). Posts 1 and 2 get generated
+images (post 2 a carousel of three), post 0 a short test video with a separate audio track (needs ffmpeg
+and Pillow); the export puts them into tests/fixtures/media/.
 """
 
 import random
+import shutil
 import sqlite3
+import subprocess
 import sys
+from datetime import datetime, timezone
 import tempfile
 from pathlib import Path
 
@@ -82,6 +87,7 @@ def build(root: Path) -> Paths:
                          (cpk, pk, u, f"synthetic comment {comment_id}", taken + rng.randint(60, 3 * DAY)))
             ratings.append((cpk, {"A": 4.0, "B": 1.0, "C": -3.5}[g] + rng.uniform(-1, 1)))
         conn.execute("UPDATE media SET like_count = ?, comment_count = 6 WHERE media_pk = ?", (len(likers), pk))
+    _media_files(paths)
     conn.execute("INSERT INTO build_info VALUES ('built_at', '2026-10-24T00:00:00+00:00')")
     conn.commit()
     conn.close()
@@ -96,10 +102,37 @@ def build(root: Path) -> Paths:
     return paths
 
 
+def _media_files(paths: Paths) -> None:
+    """Downloaded files as har-analyzer saves them: data/media/<owner>/<date>_<code>[_<n>].<ext>."""
+    from PIL import Image, ImageDraw
+
+    def stem(k: int) -> str:
+        day = datetime.fromtimestamp(T0 + k * 2 * DAY, timezone.utc).strftime("%Y-%m-%d")
+        return f"{day}_CODE{k:02d}"
+
+    folder = paths.data / "media" / "source_one"
+    folder.mkdir(parents=True, exist_ok=True)
+    for k, items in ((1, [0]), (2, [1, 2, 3])):
+        for n, hue in zip(items, ((60, 40, 120), (30, 110, 90), (140, 50, 60), (40, 70, 150))):
+            image = Image.new("RGB", (480, 600), hue)
+            ImageDraw.Draw(image).text((24, 24), f"synthetic post {k}" + (f" / {n}" if n else ""), fill="white")
+            image.save(folder / f"{stem(k)}{f'_{n}' if n else ''}.jpg", quality=70)
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        print("ffmpeg not found: the fixture gets no video")
+        return
+    base = [ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi", "-t", "2"]
+    subprocess.run([*base, "-i", "testsrc=size=320x400:rate=10", "-pix_fmt", "yuv420p", str(folder / f"{stem(0)}.mp4")],
+                   check=True)
+    subprocess.run([*base, "-i", "sine=frequency=440", "-c:a", "aac", str(folder / f"{stem(0)}.audio.m4a")], check=True)
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         paths = build(Path(tmp))
-        out = run(paths, ViewerOptions(out=OUT, thumbnails=False))
+        shutil.rmtree(OUT.parent / "media", ignore_errors=True)
+        # synthetic names, nothing to anonymise; no thumbnails, so the viewer falls back to the image files
+        out = run(paths, ViewerOptions(out=OUT, thumbnails=False, anonymize=False))
     print(f"wrote {out} ({out.stat().st_size / 1e3:.0f} kB)")
 
 

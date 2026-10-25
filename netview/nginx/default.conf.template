@@ -8,16 +8,18 @@ server {
     gzip_types application/javascript text/css application/wasm application/vnd.sqlite3 image/svg+xml;
     gzip_min_length 1024;
 
-    types {
-        application/vnd.sqlite3 netview;
-    }
-
     # The default bundle from the mounted /data directory; 204 when it is missing so the app shows the drop zone.
     location = /data/default.netview {
         root /data;
         try_files /${NETVIEW_DATASET_FILE} =204;
         default_type application/vnd.sqlite3;
         add_header Cache-Control "no-cache";
+    }
+
+    # Downloaded media that the export put next to the bundle (<data dir>/media/)
+    location /data/media/ {
+        alias /data/media/;
+        add_header Cache-Control "public, max-age=86400";
     }
 
     # Hashed build output
