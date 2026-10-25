@@ -5,6 +5,8 @@ services:
     build: .
     image: netview:latest
     restart: unless-stopped
+    ports:
+      - 5173:80
     environment:
       # file name inside NETVIEW_DATA_DIR that the app opens on start
       NETVIEW_DATASET_FILE: ${NETVIEW_DATASET_FILE:-network.netview}
@@ -15,12 +17,8 @@ services:
       - traefik.enable=true
       - traefik.http.routers.netview.rule=Host(`netview.vault.akiba-z.ch`)
       - traefik.http.routers.netview.entrypoints=websecure
-      - traefik.http.routers.netview.tls.certresolver=letsencrypt
-      - traefik.http.services.netview.loadbalancer.server.port=80
-      # The bundle is served to anyone who can reach the URL. To require a login, create a hash with
-      # `htpasswd -nB user` (double every $ in it) and enable these two lines:
-      # - traefik.http.middlewares.netview-auth.basicauth.users=user:$$2y$$05$$...
-      # - traefik.http.routers.netview.middlewares=netview-auth
-
-volumes:
-  letsencrypt:
+      - traefik.http.routers.netview.tls.certresolver=le
+      - traefik.http.services.netview.loadbalancer.server.port=5173
+networks:
+  traefik:
+    external: true
