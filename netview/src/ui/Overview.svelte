@@ -37,7 +37,7 @@
     <dt>Time range</dt><dd class="num">{formatRel(m.t0, m.t_min)} – {formatRel(m.t0, m.t_max)}</dd>
     <dt>Activation</dt><dd class="num">{compact(stats.kinds[T_KIND.exact])} exact · {compact(stats.kinds[T_KIND.derived])} one hop ·
       {compact(stats.kinds[T_KIND.none])} none</dd>
-    <dt>Exported</dt><dd class="num">{formatDate(Date.parse(m.built_at) / 1000)}{m.pseudonymized ? ' · pseudonymized' : ''}</dd>
+    <dt>Exported</dt><dd class="num">{formatDate(Date.parse(m.built_at) / 1000)}{m.pseudonymized ? ' · pseudonymized' : m.anonymized_below != null ? ` · accounts < ${compact(m.anonymized_below)} followers anonymised` : ''}</dd>
   </dl>
 
   <h3 class="section-title">Communities</h3>

@@ -68,7 +68,7 @@
     <span class="dot big" style="background: {flags & FLAG.whitelist ? 'var(--whitelist)' : flags & FLAG.influencer ? 'var(--influencer)' : 'var(--other)'}"></span>
     <div class="who">
       <h2>
-        {#if info.username && !meta.pseudonymized}
+        {#if info.username && !meta.pseudonymized && !(meta.anonymized_below != null && (info.follower_count ?? 0) < meta.anonymized_below)}
           <a href="https://www.instagram.com/{info.username}/" target="_blank" rel="noreferrer noopener">@{info.username}</a>
         {:else}@{info.username ?? '?'}{/if}
         {#if info.is_verified}<span class="badge" title="verified">✓</span>{/if}

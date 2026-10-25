@@ -1,0 +1,32 @@
+# Rendered by the nginx image's envsubst step (only defined variables such as NETVIEW_DATASET_FILE are replaced).
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    gzip on;
+    gzip_types application/javascript text/css application/wasm application/vnd.sqlite3 image/svg+xml;
+    gzip_min_length 1024;
+
+    types {
+        application/vnd.sqlite3 netview;
+    }
+
+    # The default bundle from the mounted /data directory; 204 when it is missing so the app shows the drop zone.
+    location = /data/default.netview {
+        root /data;
+        try_files /${NETVIEW_DATASET_FILE} =204;
+        default_type application/vnd.sqlite3;
+        add_header Cache-Control "no-cache";
+    }
+
+    # Hashed build output
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+    }
+}

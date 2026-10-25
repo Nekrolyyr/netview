@@ -1,0 +1,46 @@
+# netview behind Traefik at https://netview.vault.akiba-z.ch (Let's Encrypt certificate).
+# Settings come from .env (copy .env.example).
+services:
+  traefik:
+    image: traefik:v3.6
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?set ACME_EMAIL in .env}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+
+  netview:
+    build: .
+    image: netview:latest
+    restart: unless-stopped
+    environment:
+      # file name inside NETVIEW_DATA_DIR that the app opens on start
+      NETVIEW_DATASET_FILE: ${NETVIEW_DATASET_FILE:-network.netview}
+    volumes:
+      # local directory with the bundle(s), e.g. har-analyzer's data/export/viewer
+      - ${NETVIEW_DATA_DIR:-./data}:/data:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.netview.rule=Host(`netview.vault.akiba-z.ch`)
+      - traefik.http.routers.netview.entrypoints=websecure
+      - traefik.http.routers.netview.tls.certresolver=letsencrypt
+      - traefik.http.services.netview.loadbalancer.server.port=80
+      # The bundle is served to anyone who can reach the URL. To require a login, create a hash with
+      # `htpasswd -nB user` (double every $ in it) and enable these two lines:
+      # - traefik.http.middlewares.netview-auth.basicauth.users=user:$$2y$$05$$...
+      # - traefik.http.routers.netview.middlewares=netview-auth
+
+volumes:
+  letsencrypt:

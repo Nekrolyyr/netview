@@ -5,3 +5,5 @@ dist/
 !netview/tests/fixtures/*.netview
 test-results/
 playwright-report/
+netview/data/
+netview/.env

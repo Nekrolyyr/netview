@@ -33,6 +33,8 @@ export interface Meta {
   node_count: number;
   edge_count: number;
   pseudonymized: boolean;
+  /** Accounts with fewer followers have hashed ids and usernames (null or absent: none). */
+  anonymized_below?: number | null;
   no_text: boolean;
   colours: Record<string, string>;
   size_base: number;

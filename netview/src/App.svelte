@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { bundle, loadError, loading, openFile, playing, selectCommunity, selectNode, viewMode, cameraRequest } from './state/store';
+  import { bundle, loadError, loading, openDefaultDataset, openFile, playing, selectCommunity, selectNode, viewMode, cameraRequest } from './state/store';
   import DropZone from './ui/DropZone.svelte';
   import LeftSidebar from './ui/LeftSidebar.svelte';
   import RightSidebar from './ui/RightSidebar.svelte';
@@ -10,6 +10,8 @@
   let leftOpen = $state(false);
   let rightOpen = $state(false);
   let dragging = $state(false);
+
+  openDefaultDataset();
 
   function onKey(e: KeyboardEvent) {
     const target = e.target as HTMLElement;

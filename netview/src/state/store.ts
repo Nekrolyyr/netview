@@ -78,11 +78,31 @@ groups.subscribe((g) => {
 });
 
 // ---------------------------------------------------------------- actions
-export async function openFile(file: File): Promise<void> {
-  loading.set(`Reading ${file.name} …`);
+export function openFile(file: File): Promise<void> {
+  return openBundle(file.name, `Reading ${file.name} …`, () => file.arrayBuffer());
+}
+
+/** Served next to the app (nginx in Docker, the Vite middleware in dev); 204 when none is configured. */
+const DEFAULT_DATASET_URL = 'data/default.netview';
+
+/** Open the server's default bundle, if there is one; otherwise the drop zone stays. */
+export async function openDefaultDataset(): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(DEFAULT_DATASET_URL, { cache: 'no-cache' });
+  } catch {
+    return;
+  }
+  if (response.status !== 200) return;
+  await openBundle('default.netview', 'Downloading the default bundle …', () => response.arrayBuffer());
+}
+
+async function openBundle(name: string, message: string, read: () => Promise<ArrayBuffer>): Promise<void> {
+  loading.set(message);
   loadError.set(null);
   try {
-    const buffer = await file.arrayBuffer();
+    const buffer = await read();
+    if (!buffer.byteLength) throw new Error(`${name} is empty`);
     loading.set('Opening the bundle …');
     const data = await client.open(buffer);
     selectedMedia.set(new Set());
@@ -94,7 +114,7 @@ export async function openFile(file: File): Promise<void> {
     seekerTime.set(data.meta.t_max);
     bundle.set(data);
     graph.set(new Graph(data));
-    fileName.set(file.name);
+    fileName.set(name);
     let stored: MediaGroup[] = [];
     try {
       stored = JSON.parse(localStorage.getItem(`netview.groups.${data.key}`) ?? '[]');
