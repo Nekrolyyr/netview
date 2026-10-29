@@ -13,6 +13,10 @@
     { id: 'network', label: 'Network', key: '1', title: 'Nodes and links, communities faint' },
     { id: 'community', label: 'Community', key: '2', title: 'Community clouds and their sentiment towards each other' },
     { id: 'influencer', label: 'Influencer', key: '3', title: 'Accounts with many followers on top of the communities' },
+    { id: 'sentiment', label: 'Sentiment', key: '4', title: 'Communities from hostile (left) to supportive (right) towards the GSF' },
+    { id: 'radial', label: 'Radial', key: '5', title: 'Source accounts in the middle; the more members linked to them, the closer a community' },
+    { id: 'ring', label: 'Ring', key: '6', title: 'Communities on a ring by size, source accounts in the middle' },
+    { id: 'sphere', label: 'Sphere', key: '7', title: 'Every account on a ball, communities as coloured areas, links along the surface' },
   ];
 
   let query = $state('');

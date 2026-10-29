@@ -26,6 +26,11 @@
       onchange={(e) => update('autoRotate', e.currentTarget.checked)} /> Auto-rotate</label>
   <label class="check"><input type="checkbox" checked={$settings.influencerEdges}
       onchange={(e) => update('influencerEdges', e.currentTarget.checked)} /> Links in the influencer view</label>
+  <label class="check"><input type="checkbox" checked={$settings.communityLabels}
+      onchange={(e) => update('communityLabels', e.currentTarget.checked)} /> Community labels</label>
+  <label class="check" title="Zoomed out, ordinary accounts recede and links fade; zoom in for the details">
+    <input type="checkbox" checked={$settings.lod}
+      onchange={(e) => update('lod', e.currentTarget.checked)} /> Level of detail by zoom</label>
 
   <h3 class="section-title types">Link types</h3>
   <div class="grid">

@@ -6,7 +6,7 @@ import { BundleClient } from '../data/client';
 import { Graph } from '../data/graph';
 import type { BundleData, ReachResult } from '../data/types';
 import type { ViewMode } from '../filters/visibility';
-import type { HoverInfo, SceneSettings } from '../render/NetworkScene';
+import { DEFAULT_SCENE_SETTINGS, type HoverInfo, type SceneSettings } from '../render/NetworkScene';
 
 export interface MediaGroup {
   id: string;
@@ -40,10 +40,10 @@ export const selectedCommunity = writable<number | null>(null);
 export const hovered = writable<HoverInfo | null>(null);
 export const edgeTypes = writable<number>(0xff);
 
-export const DEFAULT_SETTINGS: SceneSettings = {
-  nodeScale: 1, cloudOpacity: 1, edgeOpacity: 1, maxLabels: 60, autoRotate: false, influencerEdges: false,
-};
-export const settings = writable<SceneSettings>(loadJson('netview.settings', DEFAULT_SETTINGS));
+export const DEFAULT_SETTINGS: SceneSettings = DEFAULT_SCENE_SETTINGS;
+// v2: new defaults (smaller nodes, stronger clouds, faint links, no node labels) replace the stored v1 values
+const SETTINGS_KEY = 'netview.settings.v2';
+export const settings = writable<SceneSettings>(loadJson(SETTINGS_KEY, DEFAULT_SETTINGS));
 
 /** Requests from the panels to the viewport (fly to a node or community, reset the view). */
 export type CameraRequest = { kind: 'node'; node: number } | { kind: 'community'; community: number } | { kind: 'reset' };
@@ -67,7 +67,7 @@ function saveJson(key: string, value: unknown): void {
   }
 }
 
-settings.subscribe((s) => saveJson('netview.settings', s));
+settings.subscribe((s) => saveJson(SETTINGS_KEY, s));
 
 function groupsKey(): string | null {
   const b = get(bundle);

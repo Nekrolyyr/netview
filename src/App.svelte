@@ -21,6 +21,10 @@
     if (e.key === '1') viewMode.set('network');
     else if (e.key === '2') viewMode.set('community');
     else if (e.key === '3') viewMode.set('influencer');
+    else if (e.key === '4') viewMode.set('sentiment');
+    else if (e.key === '5') viewMode.set('radial');
+    else if (e.key === '6') viewMode.set('ring');
+    else if (e.key === '7') viewMode.set('sphere');
     else if (e.key === 'r' || e.key === 'R') cameraRequest.set({ kind: 'reset' });
     else if (e.key === ' ') {
       e.preventDefault();

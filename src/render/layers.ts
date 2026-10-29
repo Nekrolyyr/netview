@@ -3,10 +3,11 @@
 import * as THREE from 'three';
 
 import type { Graph } from '../data/graph';
-import { FLAG, type CommunityInfo, type SentimentLink } from '../data/types';
+import { FLAG, UNCLUSTERED, type CommunityInfo, type SentimentLink } from '../data/types';
+import { arcPoints, type SphereCap } from './layouts';
 import {
-  cloudFragment, cloudVertex, compositeFragment, compositeVertex, edgeFragment, edgeVertex, nodeFragment, nodeVertex,
-  pickFragment, pickVertex,
+  ballFragment, ballVertex, cloudFragment, cloudVertex, compositeFragment, compositeVertex, edgeFragment, edgeVertex,
+  nodeFragment, nodeVertex, pickFragment, pickVertex,
 } from './shaders';
 
 export function rgb(hex: string): [number, number, number] {
@@ -15,19 +16,21 @@ export function rgb(hex: string): [number, number, number] {
   return [c.r, c.g, c.b];
 }
 
-/** Node colour: whitelist (bright red) > influencer (pink) > everyone else (white). */
+/** Node fill: the colour of its community; unclustered accounts are white. */
 export function nodeColours(graph: Graph): Float32Array {
-  const { colours } = graph.data.meta;
-  const red = rgb(colours.whitelist ?? '#ff2a2a');
-  const pink = rgb(colours.influencer ?? '#ff5fc8');
-  const white = rgb(colours.other ?? '#f2f0f5');
-  const flags = graph.arrays.flags;
+  const white = rgb(graph.data.meta.colours.other ?? '#f2f0f5');
+  const fills = graph.data.communities.map((c) => rgb(c.colour));
+  const community = graph.arrays.community;
   const out = new Float32Array(graph.n * 3);
   for (let i = 0; i < graph.n; i++) {
-    const c = flags[i] & FLAG.whitelist ? red : flags[i] & FLAG.influencer ? pink : white;
-    out.set(c, 3 * i);
+    out.set(community[i] === UNCLUSTERED ? white : fills[community[i]] ?? white, 3 * i);
   }
   return out;
+}
+
+/** Ring per node: 2 = whitelist (bright red) > 1 = influencer (pink) > 0 = none. */
+export function nodeRoles(flags: Uint8Array): Float32Array {
+  return Float32Array.from(flags, (f) => (f & FLAG.whitelist ? 2 : f & FLAG.influencer ? 1 : 0));
 }
 
 export class NodesLayer {
@@ -41,10 +44,12 @@ export class NodesLayer {
   constructor(readonly graph: Graph) {
     const n = graph.n;
     const g = this.geometry;
-    g.setAttribute('position', new THREE.BufferAttribute(graph.arrays.position, 3));
+    // a copy: the layouts move the nodes, the bundle keeps the exported positions
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(graph.arrays.position), 3));
     g.setAttribute('aRadius', new THREE.BufferAttribute(new Float32Array(graph.arrays.radius), 1));
     this.colours = nodeColours(graph);
     g.setAttribute('aColour', new THREE.BufferAttribute(this.colours, 3));
+    g.setAttribute('aRole', new THREE.BufferAttribute(nodeRoles(graph.arrays.flags), 1));
     g.setAttribute('aTeff', new THREE.BufferAttribute(new Float32Array(n), 1));
     g.setAttribute('aVisFrom', new THREE.BufferAttribute(new Float32Array(n).fill(1), 1));
     g.setAttribute('aVisTo', new THREE.BufferAttribute(new Float32Array(n).fill(1), 1));
@@ -57,6 +62,10 @@ export class NodesLayer {
       uProjScale: { value: 1 },
       uSizeScale: { value: 1 },
       uFocus: { value: 0 },
+      uDim: { value: 0.22 },
+      uLod: { value: 1 },
+      uRingWhitelist: { value: new THREE.Vector3(...rgb(graph.data.meta.colours.whitelist ?? '#ff2a2a')) },
+      uRingInfluencer: { value: new THREE.Vector3(...rgb(graph.data.meta.colours.influencer ?? '#ff5fc8')) },
     };
     this.material = new THREE.ShaderMaterial({
       vertexShader: nodeVertex, fragmentShader: nodeFragment, uniforms,
@@ -90,12 +99,23 @@ export class NodesLayer {
   }
 }
 
+/**
+ * Links as straight segments, or (sphere layout) as great-circle arcs along the ball: the arcs are a second
+ * geometry with the same material, so type mask, opacity, focus, time and level of detail apply to both.
+ */
 export class EdgesLayer {
   readonly geometry = new THREE.BufferGeometry();
   readonly material: THREE.ShaderMaterial;
   readonly lines: THREE.LineSegments;
+  readonly arcs: THREE.LineSegments;
+  private arcGeometry = new THREE.BufferGeometry();
+  /** link of every arc vertex */
+  private arcEdge = new Uint32Array(0);
+  private arcMode = false;
+  private edgeTime: Float32Array;
+  private edgeHighlight: Uint8Array;
 
-  constructor(readonly graph: Graph, nodeColour: Float32Array) {
+  constructor(readonly graph: Graph, private nodeColour: Float32Array) {
     const { edge_src, edge_dst, edge_types, position } = graph.arrays;
     const m = edge_src.length;
     const pos = new Float32Array(m * 6);
@@ -121,21 +141,106 @@ export class EdgesLayer {
     g.setAttribute('aHighlight', new THREE.BufferAttribute(new Float32Array(m * 2), 1));
     this.material = new THREE.ShaderMaterial({
       vertexShader: edgeVertex, fragmentShader: edgeFragment,
-      uniforms: { uTime: { value: 0 }, uTypeMask: { value: 0xff }, uOpacity: { value: 1 }, uFocus: { value: 0 } },
+      uniforms: {
+        uTime: { value: 0 }, uTypeMask: { value: 0xff }, uOpacity: { value: 1 }, uFocus: { value: 0 }, uLod: { value: 1 },
+      },
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
     this.lines = new THREE.LineSegments(g, this.material);
     this.lines.frustumCulled = false;
     this.lines.renderOrder = 1;
+    this.arcs = new THREE.LineSegments(this.arcGeometry, this.material);
+    this.arcs.frustumCulled = false;
+    this.arcs.renderOrder = 1;
+    this.arcs.visible = false;
+    this.edgeTime = new Float32Array(m);
+    this.edgeHighlight = new Uint8Array(m);
   }
 
-  /** Edge activation = the later of its endpoints' effective times. */
-  setTimes(tEff: Float32Array): void {
-    const { edge_src, edge_dst } = this.graph.arrays;
-    const a = this.geometry.getAttribute('aTeff') as THREE.BufferAttribute;
-    const arr = a.array as Float32Array;
+  /** Build the arcs between the given node positions on a ball around the origin. */
+  buildArcs(node: Float32Array, radius: number): void {
+    const { edge_src, edge_dst, edge_types } = this.graph.arrays;
+    const pieces: Float32Array[] = [];
+    let vertices = 0;
     for (let e = 0; e < edge_src.length; e++) {
-      arr[2 * e] = arr[2 * e + 1] = Math.max(tEff[edge_src[e]], tEff[edge_dst[e]]);
+      const a = 3 * edge_src[e];
+      const b = 3 * edge_dst[e];
+      const piece = arcPoints(node.subarray(a, a + 3), node.subarray(b, b + 3), radius);
+      pieces.push(piece);
+      vertices += piece.length / 3;
+    }
+    const pos = new Float32Array(vertices * 3);
+    const col = new Float32Array(vertices * 3);
+    const types = new Float32Array(vertices);
+    this.arcEdge = new Uint32Array(vertices);
+    const c = this.nodeColour;
+    let v = 0;
+    pieces.forEach((piece, e) => {
+      const a = 3 * edge_src[e];
+      const b = 3 * edge_dst[e];
+      const n = piece.length / 3;
+      pos.set(piece, 3 * v);
+      for (let k = 0; k < n; k++) {
+        // vertex pairs (2s, 2s + 1) are the ends of segment s: the colour runs from one end to the other
+        const t = (Math.floor(k / 2) + (k % 2)) / (n / 2);
+        const wa = 0.7 - 0.4 * t;
+        for (let d = 0; d < 3; d++) col[3 * (v + k) + d] = wa * c[a + d] + (1 - wa) * c[b + d];
+        types[v + k] = edge_types[e];
+        this.arcEdge[v + k] = e;
+      }
+      v += n;
+    });
+    const g = this.arcGeometry;
+    g.dispose();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('aColour', new THREE.BufferAttribute(col, 3));
+    g.setAttribute('aTypes', new THREE.BufferAttribute(types, 1));
+    g.setAttribute('aTeff', new THREE.BufferAttribute(new Float32Array(vertices), 1));
+    g.setAttribute('aHighlight', new THREE.BufferAttribute(new Float32Array(vertices), 1));
+    this.writeArcs();
+  }
+
+  /** Arcs instead of straight lines (once ``buildArcs`` ran). */
+  setArcMode(on: boolean): void {
+    const visible = this.lines.visible || this.arcs.visible;
+    this.arcMode = on && this.arcEdge.length > 0;
+    this.setVisible(visible);
+  }
+
+  setVisible(visible: boolean): void {
+    this.lines.visible = visible && !this.arcMode;
+    this.arcs.visible = visible && this.arcMode;
+  }
+
+  /** Copy the per-link time and highlight onto the arc vertices. */
+  private writeArcs(): void {
+    if (!this.arcEdge.length) return;
+    const t = this.arcGeometry.getAttribute('aTeff') as THREE.BufferAttribute;
+    const h = this.arcGeometry.getAttribute('aHighlight') as THREE.BufferAttribute;
+    const ta = t.array as Float32Array;
+    const ha = h.array as Float32Array;
+    for (let v = 0; v < this.arcEdge.length; v++) {
+      ta[v] = this.edgeTime[this.arcEdge[v]];
+      ha[v] = this.edgeHighlight[this.arcEdge[v]];
+    }
+    t.needsUpdate = true;
+    h.needsUpdate = true;
+  }
+
+  /** Move the line ends to the given node positions (x, y, z per node). */
+  setPositions(node: Float32Array): void {
+    const { edge_src, edge_dst } = this.graph.arrays;
+    const a = this.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const pos = a.array as Float32Array;
+    for (let e = 0; e < edge_src.length; e++) {
+      const s = 3 * edge_src[e];
+      const d = 3 * edge_dst[e];
+      pos[6 * e] = node[s];
+      pos[6 * e + 1] = node[s + 1];
+      pos[6 * e + 2] = node[s + 2];
+      pos[6 * e + 3] = node[d];
+      pos[6 * e + 4] = node[d + 1];
+      pos[6 * e + 5] = node[d + 2];
     }
     a.needsUpdate = true;
   }
@@ -144,12 +249,30 @@ export class EdgesLayer {
     const a = this.geometry.getAttribute('aHighlight') as THREE.BufferAttribute;
     const arr = a.array as Float32Array;
     arr.fill(0);
-    for (const e of edges) arr[2 * e] = arr[2 * e + 1] = 1;
+    this.edgeHighlight.fill(0);
+    for (const e of edges) {
+      arr[2 * e] = arr[2 * e + 1] = 1;
+      this.edgeHighlight[e] = 1;
+    }
     a.needsUpdate = true;
+    this.writeArcs();
+  }
+
+  /** Edge activation = the later of its endpoints' effective times. */
+  setTimes(tEff: Float32Array): void {
+    const { edge_src, edge_dst } = this.graph.arrays;
+    const a = this.geometry.getAttribute('aTeff') as THREE.BufferAttribute;
+    const arr = a.array as Float32Array;
+    for (let e = 0; e < edge_src.length; e++) {
+      arr[2 * e] = arr[2 * e + 1] = this.edgeTime[e] = Math.max(tEff[edge_src[e]], tEff[edge_dst[e]]);
+    }
+    a.needsUpdate = true;
+    this.writeArcs();
   }
 
   dispose(): void {
     this.geometry.dispose();
+    this.arcGeometry.dispose();
     this.material.dispose();
   }
 }
@@ -180,6 +303,8 @@ export class CloudsLayer {
   readonly mesh: THREE.Mesh;
   private community: Uint16Array;
   private colours: Float32Array;
+  /** splat centres of the exported layout */
+  private base: Float32Array;
 
   constructor(readonly communities: CommunityInfo[]) {
     const total = communities.reduce((s, c) => s + c.splats.length / 4, 0);
@@ -202,6 +327,7 @@ export class CloudsLayer {
       }
     }
     this.colours = colour;
+    this.base = new Float32Array(centre);
     const quad = new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]);
     const g = this.geometry;
     g.setAttribute('position', new THREE.BufferAttribute(quad, 3));
@@ -233,12 +359,30 @@ export class CloudsLayer {
     a.needsUpdate = true;
   }
 
-  /** Brighten the selected community, dim the others. */
+  /**
+   * Move every cloud to a new centre: splat = centre + (exported splat − exported centre), its z offset
+   * scaled by ``squash`` (the flat layouts).
+   */
+  place(centres: ArrayLike<number>[], squash: number): void {
+    const a = this.geometry.getAttribute('iCentre') as THREE.InstancedBufferAttribute;
+    const arr = a.array as Float32Array;
+    for (let k = 0; k < this.community.length; k++) {
+      const c = this.communities[this.community[k]];
+      const to = centres[this.community[k]];
+      if (!c || !to) continue;
+      arr[3 * k] = to[0] + this.base[3 * k] - c.centre[0];
+      arr[3 * k + 1] = to[1] + this.base[3 * k + 1] - c.centre[1];
+      arr[3 * k + 2] = to[2] + (this.base[3 * k + 2] - c.centre[2]) * squash;
+    }
+    a.needsUpdate = true;
+  }
+
+  /** Brighten the selected community, fade the others far back. */
   setFocus(selected: number | null): void {
     const a = this.geometry.getAttribute('iColour') as THREE.InstancedBufferAttribute;
     const arr = a.array as Float32Array;
     for (let k = 0; k < this.community.length; k++) {
-      const f = selected === null || this.community[k] === selected ? 1 : 0.3;
+      const f = selected === null || this.community[k] === selected ? 1 : 0.1;
       for (let j = 0; j < 3; j++) arr[3 * k + j] = this.colours[3 * k + j] * f;
     }
     a.needsUpdate = true;
@@ -290,6 +434,96 @@ export class CloudComposite {
     this.target.dispose();
     this.quad.geometry.dispose();
     this.material.dispose();
+  }
+}
+
+/** Most communities the ball shows (uniform arrays of the shader); the smallest beyond are left out. */
+export const MAX_CAPS = 96;
+
+/**
+ * The opaque ball of the sphere layout: it hides whatever lies behind it, and its surface shows one
+ * soft coloured cap per community; overlapping caps mix their colours. ``pickMesh`` occludes the nodes
+ * behind it in the GPU pick pass.
+ */
+export class BallLayer {
+  readonly mesh: THREE.Mesh;
+  readonly pickMesh: THREE.Mesh;
+  private material: THREE.ShaderMaterial;
+  /** per cap: direction and angular radius; colour and weight */
+  private capDir = Array.from({ length: MAX_CAPS }, () => new THREE.Vector4());
+  private capColour = Array.from({ length: MAX_CAPS }, () => new THREE.Vector4());
+  private caps: SphereCap[];
+  private colours: [number, number, number][];
+  private activity: Float32Array;
+  private focus: number | null = null;
+
+  constructor(readonly radius: number, caps: SphereCap[], colours: string[], background: string) {
+    this.caps = caps.slice(0, MAX_CAPS);
+    this.colours = colours.slice(0, MAX_CAPS).map(rgb);
+    this.activity = new Float32Array(this.caps.length).fill(1);
+    this.writeCaps();
+    const geometry = new THREE.SphereGeometry(radius, 96, 64);
+    this.material = new THREE.ShaderMaterial({
+      vertexShader: ballVertex, fragmentShader: ballFragment,
+      uniforms: {
+        uCapDir: { value: this.capDir }, uCapColour: { value: this.capColour }, uCount: { value: this.caps.length },
+        uBase: { value: new THREE.Vector3(...rgb(background)).multiplyScalar(1.5).addScalar(0.03) },
+      },
+    });
+    this.mesh = new THREE.Mesh(geometry, this.material);
+    this.mesh.renderOrder = -1;
+    this.pickMesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0x000000 }));
+  }
+
+  /** Share of each community's members that are active (0 … 1): inactive caps turn grey. */
+  setActivity(activity: Float32Array): void {
+    this.caps.forEach((_, k) => (this.activity[k] = activity[k] ?? 1));
+    this.writeCaps();
+  }
+
+  setFocus(community: number | null): void {
+    this.focus = community;
+    this.writeCaps();
+  }
+
+  /** Grow or shrink the ball with the morph (0 = gone). */
+  setScale(k: number): void {
+    this.mesh.scale.setScalar(Math.max(1e-3, k));
+    this.pickMesh.scale.setScalar(Math.max(1e-3, k));
+    this.mesh.visible = this.pickMesh.visible = k > 0.01;
+  }
+
+  /** Community whose cap is strongest at a point of the ball (unit direction), if one is strong enough. */
+  communityAt(dir: THREE.Vector3): number | null {
+    let best: number | null = null;
+    let bestW = 0.25;
+    this.caps.forEach((c, k) => {
+      const angle = Math.acos(Math.min(1, Math.max(-1, dir.x * c.dir[0] + dir.y * c.dir[1] + dir.z * c.dir[2])));
+      const w = Math.exp(-1.6 * (angle / c.angle) ** 2);
+      if (w > bestW) {
+        best = k;
+        bestW = w;
+      }
+    });
+    return best;
+  }
+
+  /** The uniform arrays are shared with the material: changing the vectors is enough. */
+  private writeCaps(): void {
+    this.caps.forEach((c, k) => {
+      this.capDir[k].set(c.dir[0], c.dir[1], c.dir[2], c.angle);
+      const col = this.colours[k] ?? [0.5, 0.5, 0.5];
+      const a = this.activity[k];
+      const grey = 0.06 + 0.35 * (0.299 * col[0] + 0.587 * col[1] + 0.114 * col[2]);
+      const mix = (x: number) => grey + (x - grey) * a;
+      this.capColour[k].set(mix(col[0]), mix(col[1]), mix(col[2]), this.focus === null || this.focus === k ? 1 : 0.12);
+    });
+  }
+
+  dispose(): void {
+    this.mesh.geometry.dispose();
+    this.material.dispose();
+    (this.pickMesh.material as THREE.Material).dispose();
   }
 }
 

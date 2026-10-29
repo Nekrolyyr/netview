@@ -24,7 +24,13 @@ test('opens a bundle and drives views, search, time seeker and media filter', as
   await expect(page.getByRole('tab', { name: 'Community' })).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('3');
   await expect(page.getByRole('tab', { name: 'Influencer' })).toHaveAttribute('aria-selected', 'true');
+  for (const [key, name] of [['4', 'Sentiment'], ['5', 'Radial'], ['6', 'Ring'], ['7', 'Sphere']]) {
+    await page.keyboard.press(key);
+    await expect(page.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
+    await page.waitForTimeout(1000);                    // the morph to the ordered layout
+  }
   await page.keyboard.press('1');
+  await page.waitForTimeout(1000);
 
   // search → node panel
   await page.locator('#node-search').fill('influencer_2');

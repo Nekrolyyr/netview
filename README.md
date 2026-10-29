@@ -56,16 +56,22 @@ the bundle. To require a login, enable the basic-auth labels in `docker-compose.
 | | |
 |---|---|
 | **Rotate / zoom / pan** | left drag · wheel (zooms towards the cursor) · right drag |
-| **Select** | click a node or a community cloud; double click flies to it; `Esc` clears |
+| **Select** | click a node, or a community cloud to focus it (everything else fades); double click flies to it; `Esc` clears |
 | **View modes** | `1` Network (nodes, links, faint clouds) · `2` Community (clouds and sentiment arrows, plus unclustered accounts with > 10k followers) · `3` Influencer (influencers and source accounts on the clouds) |
+| **Ordered views** | flat layouts seen from the front, the nodes morph into place: `4` Sentiment (communities along an axis by their mean sentiment towards the GSF, unrated ones in a column on the right) · `5` Radial (source accounts in the middle; the larger the share of a community's members linked directly to a source account, the closer the community) · `6` Ring (communities clockwise by size from 12 o'clock, source accounts in the middle). Accounts in no community sit between the communities they are linked to. |
+| **Sphere** | `7`: every account on the surface of an opaque ball, which hides whatever lies behind it. Communities keep their directions from the 3D layout and become outlined, coloured areas that may overlap (their colours mix); links run along the surface as great-circle arcs. Hover or click an area for its community; double click flies down onto it. |
 | **Search** | `/`, type a username, `Enter` flies to it |
 | **Time seeker** | drag or click the histogram, `←/→` one day (`Shift`: a week), `Home/End`, `Space` plays. Gray = not active yet. Users without any time turn coloured at the end. |
 | **Media** | click the thumbnail of a downloaded post (▶ / ⤢) to view it: images, videos with sound, carousels (`←/→`), caption and counts; `Esc` closes. Click a post to filter by its reach (interacted = direct, their neighbours = one hop); `Ctrl`-click adds, `Shift`-click selects a range. Groups: build them from the selection, drag posts onto a group, double click renames, export and import as JSON. The time seeker then shows when the reach grew. |
-| **Settings** (⚙) | node size, cloud and link intensity, number of labels, link types, auto-rotate |
+| **Settings** (⚙) | node size, cloud and link intensity, number of node labels, community labels, level of detail, link types, auto-rotate. Defaults: nodes 0.5×, clouds 2×, links 0.1×, no node labels. |
 
-Colours: source (whitelist) accounts are bright red, influencers pink and everyone else white. Node
-size grows with the number of absorbed one-link accounts. Labels are drawn only for influencers and
+Colours: a node is filled with its community's colour (white: in no community); source (whitelist)
+accounts wear a red ring, influencers a pink one. The six largest communities (with absorbed accounts)
+have their own colour from a palette validated for all pairs on the dark background, smaller ones are
+grey, the source accounts light grey. Node size grows with the number of absorbed one-link accounts.
+Community names sit at their clouds. Node labels (off by default) are drawn only for influencers and
 source accounts on the side facing you that are not hidden behind other nodes, and never overlap.
+Zoomed out, ordinary accounts recede and links fade (level of detail); zoom in for the details.
 
 ## Architecture
 
@@ -77,8 +83,10 @@ src/
 ├── filters/   time.ts – effective time per node (seeker × media reach), absorbed growth, cloud activity
 │              visibility.ts – what each view mode shows
 ├── render/    NetworkScene.ts – renderer, orbit controls, GPU picking, labels, transitions
-│              layers.ts – nodes (points), links (line segments), clouds (splats accumulated offscreen
-│              and composited as average colour by coverage), sentiment arrows (tubes)
+│              layouts.ts – the ordered layouts (sentiment, radial, ring) and the sphere
+│              layers.ts – nodes (points), links (line segments or arcs on the ball), clouds (splats
+│              accumulated offscreen and composited as average colour by coverage), sentiment arrows
+│              (tubes), the ball of the sphere view (community caps in its shader)
 │              shaders.ts, labelPlacement.ts (greedy collision-free placement)
 └── ui/        TopBar, LeftSidebar (media, groups), RightSidebar (Overview / NodePanel / CommunityPanel),
                TimeSeeker, Legend, Settings, Viewport, DropZone

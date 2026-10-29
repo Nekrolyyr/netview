@@ -14,6 +14,7 @@ vec3 inactiveColour(vec3 c) {
 export const nodeVertex = /* glsl */ `
 attribute float aRadius;
 attribute vec3 aColour;
+attribute float aRole;
 attribute float aTeff;
 attribute float aVisFrom;
 attribute float aVisTo;
@@ -23,7 +24,13 @@ uniform float uMix;
 uniform float uProjScale;
 uniform float uSizeScale;
 uniform float uFocus;
+uniform float uDim;
+uniform float uLod;
+uniform vec3 uRingWhitelist;
+uniform vec3 uRingInfluencer;
 varying vec3 vColour;
+varying vec3 vRing;
+varying float vRole;
 varying float vAlpha;
 varying float vHighlight;
 ${GRAY}
@@ -33,16 +40,24 @@ void main() {
   float vis = mix(aVisFrom, aVisTo, uMix);
   bool isActive = aTeff <= uTime;
   vColour = isActive ? aColour : inactiveColour(aColour);
-  float focus = uFocus > 0.5 && aHighlight < 0.5 ? 0.22 : 1.0;
-  vAlpha = vis * focus;
+  vec3 ring = aRole > 1.5 ? uRingWhitelist : uRingInfluencer;
+  vRing = isActive ? ring : inactiveColour(ring);
+  vRole = aRole;
+  float focus = uFocus > 0.5 && aHighlight < 0.5 ? uDim : 1.0;
+  // zoomed out: accounts without a role recede behind the clouds (level of detail)
+  float lod = aRole > 0.5 || aHighlight > 0.5 ? 1.0 : mix(0.18, 1.0, uLod);
+  vAlpha = vis * focus * lod;
   vHighlight = aHighlight;
   float px = 2.0 * aRadius * uSizeScale * uProjScale / max(-mv.z, 0.001);
   gl_PointSize = vis > 0.001 ? clamp(px, 1.6, 512.0) * (aHighlight > 1.5 ? 1.35 : 1.0) : 0.0;
 }
 `;
 
+/** Fill = community colour; source accounts and influencers wear an outer ring (red / pink). */
 export const nodeFragment = /* glsl */ `
 varying vec3 vColour;
+varying vec3 vRing;
+varying float vRole;
 varying float vAlpha;
 varying float vHighlight;
 void main() {
@@ -51,9 +66,10 @@ void main() {
   if (r > 1.0 || vAlpha < 0.01) discard;
   float edge = 1.0 - smoothstep(0.86, 1.0, r);
   vec3 c = vColour * mix(1.0, 0.62, smoothstep(0.62, 0.95, r));
+  if (vRole > 0.5) c = mix(c, vRing, smoothstep(0.6, 0.68, r));
   if (vHighlight > 1.5) {
-    // selected: bright ring around the disc
-    float ring = smoothstep(0.68, 0.76, r) * (1.0 - smoothstep(0.86, 0.94, r));
+    // selected: bright ring inside the disc
+    float ring = smoothstep(0.36, 0.42, r) * (1.0 - smoothstep(0.5, 0.56, r));
     c = mix(c * 0.85, vec3(1.0), ring);
   }
   gl_FragColor = vec4(c, vAlpha * edge);
@@ -113,15 +129,16 @@ export const edgeFragment = /* glsl */ `
 uniform int uTypeMask;
 uniform float uOpacity;
 uniform float uFocus;
+uniform float uLod;
 varying vec3 vColour;
 varying float vActive;
 varying float vTypes;
 varying float vHighlight;
 void main() {
   if ((int(vTypes + 0.5) & uTypeMask) == 0) discard;
-  float a = vActive > 0.5 ? 0.11 : 0.04;
-  if (uFocus > 0.5) a = vHighlight > 0.5 ? 0.75 : a * 0.25;
-  a *= uOpacity;
+  float a = (vActive > 0.5 ? 0.11 : 0.04) * uLod * uOpacity;
+  // the links of a selection stay readable at a low link intensity
+  if (uFocus > 0.5) a = vHighlight > 0.5 ? 0.75 * min(1.0, uOpacity * 5.0) : a * 0.25;
   if (a < 0.003) discard;
   gl_FragColor = vec4(vColour, a);
 }
@@ -184,5 +201,63 @@ void main() {
   vec3 colour = acc.rgb / acc.a;
   float coverage = 1.0 - exp(-acc.a * uDensity);
   gl_FragColor = vec4(colour * coverage, coverage);   // premultiplied
+}
+`;
+
+/**
+ * The ball of the sphere layout. Every community is a Gaussian cap around its direction (weight 0.2 at its
+ * angular radius); the caps' colours are averaged by weight and cover the ball by 1 - exp(-2 sum w), so
+ * overlapping caps mix instead of adding up to white. Lit from the camera, with a faint rim.
+ */
+export const ballVertex = /* glsl */ `
+varying vec3 vDir;
+varying vec3 vViewNormal;
+void main() {
+  vDir = normalize(position);
+  vViewNormal = normalize(normalMatrix * normal);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const ballFragment = /* glsl */ `
+uniform vec4 uCapDir[96];      // direction, angular radius (MAX_CAPS in layers.ts)
+uniform vec4 uCapColour[96];   // colour, weight
+uniform int uCount;
+uniform vec3 uBase;
+varying vec3 vDir;
+varying vec3 vViewNormal;
+void main() {
+  vec3 n = normalize(vDir);
+  vec3 acc = vec3(0.0);
+  float w = 0.0;
+  // outline of every cap at its angular radius, so grey and overlapping communities stay apart; the pixel
+  // size (radians) is taken outside the loop: derivatives inside it are undefined on some GPUs
+  float pixel = max(length(fwidth(n)), 1e-5);
+  vec3 edgeColour = vec3(0.0);
+  float edge = 0.0;
+  for (int i = 0; i < 96; i++) {
+    if (i >= uCount) break;
+    vec4 cap = uCapDir[i];
+    vec4 col = uCapColour[i];
+    float angle = acos(clamp(dot(n, cap.xyz), -1.0, 1.0));
+    float radius = max(cap.w, 1e-4);
+    float k = exp(-1.6 * (angle * angle) / (radius * radius)) * col.w;
+    acc += col.rgb * k;
+    w += k;
+    float line = (1.0 - smoothstep(0.0, 1.5 * pixel, abs(angle - radius))) * col.w;
+    if (line > edge) {
+      edge = line;
+      edgeColour = col.rgb;
+    }
+  }
+  vec3 colour = w > 1e-4 ? acc / w : uBase;
+  // caps stay a little muted, so nodes filled with the same colour still stand out on them
+  float coverage = (1.0 - exp(-2.0 * w)) * 0.85;
+  float facing = max(dot(normalize(vViewNormal), vec3(0.0, 0.0, 1.0)), 0.0);
+  vec3 c = mix(uBase, colour, coverage);
+  c = mix(c, edgeColour * 0.6 + 0.35, 0.7 * edge);
+  c *= 0.55 + 0.45 * facing;
+  c += vec3(0.16, 0.13, 0.24) * pow(1.0 - facing, 3.0);
+  gl_FragColor = vec4(c, 1.0);
 }
 `;
